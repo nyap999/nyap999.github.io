@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>シンプル麻雀 v2</title>
+</head>
+<body>
+    <h1>シンプル麻雀 v2</h1>
+    <p>
+        ルール説明: 萬子、筒子、索子の1から9までが各4枚ずつの計108枚の牌を使います。牌をクリックするとその牌を捨て、新しい牌を引くことができます。役は一切ないのでとにかくなるべく少ないツモ回数で和了を目指しましょう。なお七対子では和了れません。
+    </p>
+    <button onclick="startGame()">プレイ開始</button>
+    <p id="message"></p>
+    <p id="turns"></p>
+    <div id="hand"></div>
+    <h2>捨てた牌:</h2>
+    <div id="discardPile"></div>
+<script>
+var deck = [];
+var playerHand = [];
+var suits = ["man", "pin", "sou"];
+var discardPile = [];
+var turns = 0;
+var isGameOver = false;
+
+function createDeck() {
+    deck = [];
+    for (let suit of suits) {
+        for (let i = 1; i <= 9; i++) {
+            for (let j = 0; j < 4; j++) {
+                deck.push({ number: i, suit: suit });
+            }
+        }
+    }
+    deck.sort(() => Math.random() - 0.5);
+}
+
+function drawCard() {
+    return deck.pop();
+}
+
+function dealInitialHand() {
+    playerHand = [];
+    for (let i = 0; i < 14; i++) {
+        playerHand.push(drawCard());
+    }
+}
+
+function startGame() {
+    createDeck();
+    dealInitialHand();
+    turns = 0;
+    discardPile = [];
+    isGameOver = false;
+    displayTurns();
+    displayHand();
+    displayDiscardPile();
+    document.getElementById("message").innerHTML = "";
+    if (isWinningHand(playerHand)) {
+        document.getElementById("message").innerHTML = "天和！ あなたの点数 : " + 48000;
+        isGameOver = true;
+    } else if (isReadyHand()) {
+        document.getElementById("message").innerHTML = "聴牌です！";
+    }
+}
+
+function discardCard(index) {
+    if (isGameOver || deck.length == 0) {
+        return;
+    }
+    discardPile.push(playerHand.splice(index, 1)[0]);
+    let newCard = drawCard();
+    playerHand.push(newCard);
+    turns++;
+    displayTurns();
+    displayHand();
+    displayDiscardPile();
+    if (isWinningHand(playerHand)) {
+        document.getElementById("message").innerHTML = "ツモ！ あなたの点数 : " + Math.max((10000 - turns * 200),0);
+        isGameOver = true;
+    } else if (deck.length == 0) {
+        document.getElementById("message").innerHTML = "牌山が空になりました。流局です。";
+        isGameOver = true;
+    } else if (isReadyHand()) {
+        document.getElementById("message").innerHTML = "聴牌です！";
+    } else {
+        document.getElementById("message").innerHTML = "";
+    }
+}
+
+function displayTurns() {
+    document.getElementById("turns").innerHTML = "ツモ回数: " + turns;
+}
+
+function displayDiscardPile() {
+    let pileElement = document.getElementById("discardPile");
+    pileElement.innerHTML = "";
+    discardPile.forEach((card, index) => {
+        let img = document.createElement('img');
+        img.src = `pi_images/${card.suit}${('0' + card.number).slice(-2)}.png`;
+        img.alt = `${card.suit} ${card.number}`;
+        img.style.width = "45px";
+        img.style.height = "60px";
+        img.style.margin = "5px";
+        img.style.float = "left";  // 画像を左側にフロートさせます
+        pileElement.appendChild(img);
+        if ((index + 1) % 6 === 0) { // 画像6枚ごとに改行するために追加
+            let br = document.createElement('br');
+            br.style.clear = "both";
+            pileElement.appendChild(br);
+        }
+    });
+}
+
+function displayHand() {
+    let handElement = document.getElementById("hand");
+    handElement.innerHTML = "";
+    let sortedHand = playerHand.slice(0, -1).map((card, index) => ({ card, index }))
+                                .sort((a, b) => a.card.suit !== b.card.suit ? a.card.suit.localeCompare(b.card.suit) : a.card.number - b.card.number);
+    sortedHand.push({ card: playerHand[playerHand.length - 1], index: playerHand.length - 1 });
+    sortedHand.forEach(({card, index}) => {
+        let cardElement = document.createElement("button");
+        let img = document.createElement("img");
+        img.src = `pi_images/${card.suit}${('0' + card.number).slice(-2)}.png`;
+        img.alt = `${card.suit} ${card.number}`;
+        cardElement.appendChild(img);
+        cardElement.onclick = () => discardCard(index);
+        handElement.appendChild(cardElement);
+    });
+}
+
+function isWinningHand(usingHand) {
+    let sortedHand = [...usingHand].sort((a, b) => a.suit !== b.suit ? a.suit.localeCompare(b.suit) : a.number - b.number);
+    let sameCards = []; // 同じ色の同じ数値のカードを2枚以上持っているものを保存
+    let prevCard = sortedHand[0];
+    let count = 1;
+    for (let i = 1; i < sortedHand.length; i++) {
+        if (sortedHand[i].number === prevCard.number && sortedHand[i].suit === prevCard.suit) {
+            count++;
+        } else {
+            if (count >= 2) sameCards.push({ card: prevCard, count });
+            count = 1;
+        }
+        prevCard = sortedHand[i];
+    }
+    if (count >= 2) sameCards.push({ card: prevCard, count });
+
+    // 2枚組を見つけて、それぞれについて2枚組を1つだけ固定してから、残り12枚について同様の判定
+    for (let i = 0; i < sameCards.length; i++) {
+        if (sameCards[i].count < 2) continue;
+
+        let tempHand = [...sortedHand];
+        // 2枚組をtempHandから取り除く
+        let removalCount = 0;
+        for (let j = 0; j < tempHand.length && removalCount < 2; j++) {
+            if (tempHand[j].number === sameCards[i].card.number && tempHand[j].suit === sameCards[i].card.suit) {
+                tempHand.splice(j, 1);
+                j--;
+                removalCount++;
+            }
+        }
+
+        // 残り12枚について、3枚組と連番を見つける
+        let tempSameCards = [];
+        prevCard = tempHand[0];
+        count = 1;
+        for (let j = 1; j < tempHand.length; j++) {
+            if (tempHand[j].number === prevCard.number && tempHand[j].suit === prevCard.suit) {
+                count++;
+            } else {
+                if (count >= 3) tempSameCards.push({ card: prevCard, count });
+                count = 1;
+            }
+            prevCard = tempHand[j];
+        }
+        if (count >= 3) tempSameCards.push({ card: prevCard, count });
+
+        // 同じ色の同じ数値のカードをそれぞれ同じ色同じ数字3枚の組み合わせとして採用するか場合分け
+        for (let j = 0; j < (1 << tempSameCards.length); j++) {
+            let candidateHand = [...tempHand];
+            let sets = 0;
+            for (let k = 0; k < tempSameCards.length; k++) {
+                if ((j & (1 << k)) !== 0) { // iのjビット目が1なら同じ色同じ数字3枚の組み合わせとして採用
+                    sets++;
+                    removalCount = 0;
+                    for (let l = 0; l < candidateHand.length && removalCount < 3; l++) {
+                        if (candidateHand[l].number === tempSameCards[k].card.number && candidateHand[l].suit === tempSameCards[k].card.suit) {
+                            candidateHand.splice(l, 1);
+                            l--;
+                            removalCount++;
+                        }
+                    }
+                }
+            }
+
+            // 同じ色同じ数字3枚の組み合わせとして使わなかったカードをすべて連番として処理できるか確認
+            while (candidateHand.length > 0) {
+                if (candidateHand.length < 3) break;
+                let card1 = candidateHand[0];
+                let card2 = candidateHand.find(card => card.number === card1.number + 1 && card.suit === card1.suit);
+                let card3 = candidateHand.find(card => card.number === card1.number + 2 && card.suit === card1.suit);
+                if (card2 && card3) {
+                    sets++;
+                    candidateHand = candidateHand.filter(card => !(card === card1 || card === card2 || card === card3));
+                } else {
+                    break;
+                }
+            }
+
+            if (sets >= 4) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function isReadyHand() {
+    let sortedHand = [...playerHand].sort((a, b) => a.suit !== b.suit ? a.suit.localeCompare(b.suit) : a.number - b.number);
+    for (let i = 0; i < sortedHand.length; i++) {
+        let tempHand = [...sortedHand];
+        tempHand.splice(i, 1); // 1枚取り除いた13枚の手札を作る
+        // カードを1枚足して「聴牌」になるかを確認
+        for (let j = 1; j <= 9; j++) { // カードの数値は1から9
+            for (let suit of suits) { // カードのスートを想定
+                let newCard = { number: j, suit: suit };
+                // 同じカードが既に4枚存在する場合はスキップ
+                if (tempHand.filter(card => card.number === newCard.number && card.suit === newCard.suit).length >= 4) {
+                    continue;
+                }
+                tempHand.push(newCard);
+                if (isWinningHand(tempHand)) {
+                    return true; // 足したカードで「聴牌」になる場合
+                }
+                tempHand.pop(); // 足したカードを取り除く
+            }
+        }
+    }
+    return false; // 「聴牌」になる組み合わせが無い場合
+}
+
+</script>
+</body>
+</html>
